@@ -1,0 +1,96 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Marsela Yulita"
+date: "14 September 2017"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+## Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+#### Load the data
+```{r load}
+library(caret)
+library(randomForest)
+library(rattle)
+
+
+#Download the data
+if(!file.exists("pml-training.csv")){
+  download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "pml-training.csv")}
+
+if(!file.exists("pml-testing.csv")){
+  download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "pml-testing.csv")}
+
+#Read the data
+trainingData<- read.csv("pml-training.csv", sep=",", header=TRUE, na.strings = c("NA","",'#DIV/0!'))
+testingData<- read.csv("pml-testing.csv", sep=",", header=TRUE, na.strings = c("NA","",'#DIV/0!'))
+
+dim(trainingData)
+dim(testingData)
+```
+
+#### Preprocessing data
+```{r preproses}
+#Remove fields with NA
+trainingData <- trainingData[,(colSums(is.na(trainingData)) == 0)]
+testingData <- testingData[,(colSums(is.na(testingData)) == 0)]
+
+dim(trainingData)
+dim(testingData)
+
+#Preprocess step
+numericalcol <- which(lapply(trainingData, class) %in% "numeric")
+
+preprocessModel <-preProcess(trainingData[,numericalcol],method=c('knnImpute', 'center', 'scale'))
+pre_trainingData <- predict(preprocessModel, trainingData[,numericalcol])
+pre_trainingData$classe <- trainingData$classe
+
+pre_testingData <-predict(preprocessModel,testingData[,numericalcol])
+
+#Remove NearZeroVariance variables
+nzv <- nearZeroVar(pre_trainingData,saveMetrics=TRUE)
+pre_trainingData <- pre_trainingData[,nzv$nzv==FALSE]
+
+nzv <- nearZeroVar(pre_testingData,saveMetrics=TRUE)
+pre_testingData <- pre_testingData[,nzv$nzv==FALSE]
+```
+
+#### Train Data
+I used the random-forest technique to generate a predictive model, It turned out showed a good performance.
+
+```{r train}
+#create data partition
+set.seed(2017)
+dtTrain<- createDataPartition(pre_trainingData$classe, p=0.6, list=FALSE)
+training<- pre_trainingData[dtTrain, ]
+validation <- pre_trainingData[-dtTrain, ]
+dim(training) ; dim(validation)
+
+#train model with random forest
+modelFit <- train(classe ~., method="rf", data=training, trControl=trainControl(method='cv'), number=5, allowParallel=TRUE, importance=TRUE )
+modelFit
+```
+
+#### Evaluate the model (out-of-sample error)
+```{r eva}
+predictvalid <- predict(modelFit, validation)
+validmatrix <- confusionMatrix(validation$classe, predictvalid)
+validmatrix
+```
+
+The accuracy of the prediction is 99.07%. Hence, the out-of-sample error is 100% - 99.07% = 0.93%.
+
+#### Using the model with the test data
+```{r test}
+pred_final <- predict(modelFit, pre_testingData)
+pred_final
+```
+
+Here are the results, we will use them for the submission of this course project in the coursera platform.
