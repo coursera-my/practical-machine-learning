@@ -1,14 +1,14 @@
 ---
 title: "Practical Machine Learning Course Project"
 author: "Marsela Yulita"
-date: "14 September 2017"
+date: "20 September 2017"
 output: 
   html_document: 
     keep_md: yes
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE )
 ```
 
 ## Introduction
@@ -37,6 +37,8 @@ dim(testingData)
 ```
 
 #### Preprocessing data
+Remove the missing values and zero variance variable.
+
 ```{r preproses}
 #Remove fields with NA
 trainingData <- trainingData[,(colSums(is.na(trainingData)) == 0)]
@@ -62,30 +64,63 @@ nzv <- nearZeroVar(pre_testingData,saveMetrics=TRUE)
 pre_testingData <- pre_testingData[,nzv$nzv==FALSE]
 ```
 
-#### Train Data
-I used the random-forest technique to generate a predictive model, It turned out showed a good performance.
+#### Cross validation
+I will create partition in data set to make a training data set and test data set.
 
-```{r train}
+```{r crossval}
 #create data partition
 set.seed(2017)
 dtTrain<- createDataPartition(pre_trainingData$classe, p=0.6, list=FALSE)
 training<- pre_trainingData[dtTrain, ]
 validation <- pre_trainingData[-dtTrain, ]
 dim(training) ; dim(validation)
+```
 
+#### Train Data
+##### Decision Tree (rpart)
+Then, I will used decision tree to build a predictive model.
+
+```{r trainrpart}
+#train model with rpart
+rpartmodel <- train(classe~., method="rpart", data=training)
+rpartmodel$finalModel
+fancyRpartPlot(rpartmodel$finalModel,cex=.5,under.cex=1,shadow.offset=0)
+
+#predict with validation data
+rpartpredict <- predict(rpartmodel,validation)
+rpartmatrix <- confusionMatrix(validation$classe,rpartpredict)
+rpartmatrix
+```
+
+Unfortunately, we got the accuracy only 48.5%.
+
+##### Random forest
+Let's try the random-forest technique to generate a predictive model.
+
+```{r trainrf}
 #train model with random forest
 modelFit <- train(classe ~., method="rf", data=training, trControl=trainControl(method='cv'), number=5, allowParallel=TRUE, importance=TRUE )
 modelFit
-```
+plot(modelFit)
 
-#### Evaluate the model (out-of-sample error)
-```{r eva}
+#predict with validation data
 predictvalid <- predict(modelFit, validation)
 validmatrix <- confusionMatrix(validation$classe, predictvalid)
 validmatrix
 ```
+We got 99.7% accuracy for random forest training model. So this model was a better model than decision tree.
 
-The accuracy of the prediction is 99.07%. Hence, the out-of-sample error is 100% - 99.07% = 0.93%.
+#### Evaluate the model (in and out of sample error)
+```{r eva}
+#In training set
+insample <- predict(modelFit,training)
+confusionMatrix(training$classe,insample)
+
+#out sample
+confusionMatrix(validation$classe, predictvalid)
+```
+
+The accuracy of the prediction is 99.07%. Hence, the in and out of sample error is 100% - 99.07% = 0.93%.
 
 #### Using the model with the test data
 ```{r test}
